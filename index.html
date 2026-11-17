@@ -490,8 +490,19 @@
         // ================= PACKAGES LOGIC =================
         window.saveNewPackage = async function(e) {
             e.preventDefault();
-            const user = auth.currentUser;
-            if (!user) return;
+            
+            // Ensure auth is ready
+            let user = auth.currentUser;
+            if (!user) {
+                try {
+                    const cred = await signInAnonymously(auth);
+                    user = cred.user;
+                } catch (err) {
+                    console.error("Auth error:", err);
+                    window.showMessage('שגיאת התחברות לענן. נסה שוב.', false);
+                    return;
+                }
+            }
 
             const name = document.getElementById('pkg-name').value;
             const contents = document.getElementById('pkg-contents').value;
@@ -645,8 +656,19 @@
         // ================= RETURNS LOGIC =================
         window.saveNewReturn = async function(e) {
             e.preventDefault();
-            const user = auth.currentUser;
-            if (!user) return;
+
+            // Ensure auth is ready
+            let user = auth.currentUser;
+            if (!user) {
+                try {
+                    const cred = await signInAnonymously(auth);
+                    user = cred.user;
+                } catch (err) {
+                    console.error("Auth error:", err);
+                    window.showMessage('שגיאת התחברות לענן. נסה שוב.', false);
+                    return;
+                }
+            }
 
             const name = document.getElementById('ret-name').value;
             const reference = document.getElementById('ret-ref').value;
