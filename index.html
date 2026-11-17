@@ -251,6 +251,48 @@
         </div>
     </div>
 
+    <!-- MODAL: EDIT ITEM (PACKAGE OR RETURN) -->
+    <div id="modal-edit" class="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-2xl border border-gray-100 animate-in fade-in zoom-in duration-150">
+            <div class="flex justify-between items-center mb-6">
+                <h3 id="edit-modal-title" class="text-xl font-black text-gray-900 flex items-center gap-2">
+                    <i class="fa-solid fa-pen-to-square text-sheinPink"></i> עריכת פריט
+                </h3>
+                <button onclick="closeEditModal()" class="w-8 h-8 rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200 flex items-center justify-center transition">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <form onsubmit="saveEditedItem(event)" class="space-y-4">
+                <input type="hidden" id="edit-id">
+                <input type="hidden" id="edit-type">
+                <div>
+                    <label class="block text-sm font-bold mb-1.5 text-gray-700">שם / תיאור</label>
+                    <input type="text" id="edit-name" required class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-sheinPink text-sm bg-gray-50">
+                </div>
+                <div id="edit-contents-group">
+                    <label class="block text-sm font-bold mb-1.5 text-gray-700">מה יש בחבילה?</label>
+                    <textarea id="edit-contents" rows="2" class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-sheinPink text-sm bg-gray-50"></textarea>
+                </div>
+                <div id="edit-ref-group">
+                    <label class="block text-sm font-bold mb-1.5 text-gray-700">מספר אסמכתא</label>
+                    <input type="text" id="edit-ref" class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-sheinDark text-sm font-mono bg-gray-50">
+                </div>
+                <div>
+                    <label class="block text-sm font-bold mb-1.5 text-gray-700">מספר מעקב</label>
+                    <input type="text" id="edit-tracking" required class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-sheinPink text-sm font-mono bg-gray-50">
+                </div>
+                <div id="edit-amount-group">
+                    <label class="block text-sm font-bold mb-1.5 text-gray-700">סכום להחזר (₪)</label>
+                    <input type="number" step="0.01" id="edit-amount" class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-sheinDark text-sm bg-gray-50 font-bold">
+                </div>
+                <div class="flex justify-end gap-3 pt-4">
+                    <button type="button" onclick="closeEditModal()" class="px-5 py-2.5 rounded-xl border border-gray-200 text-gray-600 font-bold text-sm hover:bg-gray-100 transition">ביטול</button>
+                    <button type="submit" class="px-6 py-2.5 rounded-xl bg-sheinDark hover:bg-black text-white font-bold text-sm shadow-md transition cursor-pointer">שמור שינויים</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <!-- SCANNER MODAL (CAMERA) -->
     <div id="scanner-modal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center p-4 hidden">
         <div class="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl text-center relative">
@@ -407,6 +449,74 @@
         window.closeAddPackageModal = function() { document.getElementById('modal-package').classList.add('hidden'); }
         window.openAddReturnModal = function() { document.getElementById('modal-return').classList.remove('hidden'); }
         window.closeAddReturnModal = function() { document.getElementById('modal-return').classList.add('hidden'); }
+
+        window.openEditModal = function(type, id) {
+            document.getElementById('edit-type').value = type;
+            document.getElementById('edit-id').value = id;
+
+            if (type === 'package') {
+                const pkg = appData.packages.find(p => p.id === id);
+                if (!pkg) return;
+                document.getElementById('edit-modal-title').innerHTML = '<i class="fa-solid fa-pen-to-square text-sheinPink"></i> עריכת חבילה';
+                document.getElementById('edit-name').value = pkg.name || '';
+                document.getElementById('edit-contents').value = pkg.contents || '';
+                document.getElementById('edit-tracking').value = pkg.tracking || '';
+                document.getElementById('edit-contents-group').classList.remove('hidden');
+                document.getElementById('edit-ref-group').classList.add('hidden');
+                document.getElementById('edit-amount-group').classList.add('hidden');
+            } else {
+                const ret = appData.returns.find(r => r.id === id);
+                if (!ret) return;
+                document.getElementById('edit-modal-title').innerHTML = '<i class="fa-solid fa-pen-to-square text-sheinDark"></i> עריכת החזר';
+                document.getElementById('edit-name').value = ret.name || '';
+                document.getElementById('edit-ref').value = ret.reference || '';
+                document.getElementById('edit-tracking').value = ret.tracking || '';
+                document.getElementById('edit-amount').value = ret.amount || '';
+                document.getElementById('edit-contents-group').classList.add('hidden');
+                document.getElementById('edit-ref-group').classList.remove('hidden');
+                document.getElementById('edit-amount-group').classList.remove('hidden');
+            }
+
+            document.getElementById('modal-edit').classList.remove('hidden');
+        }
+
+        window.closeEditModal = function() {
+            document.getElementById('modal-edit').classList.add('hidden');
+        }
+
+        window.saveEditedItem = async function(e) {
+            e.preventDefault();
+            const type = document.getElementById('edit-type').value;
+            const id = document.getElementById('edit-id').value;
+            const name = document.getElementById('edit-name').value;
+            const tracking = document.getElementById('edit-tracking').value;
+
+            try {
+                if (type === 'package') {
+                    const contents = document.getElementById('edit-contents').value;
+                    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'packages', id), {
+                        name,
+                        contents,
+                        tracking
+                    }, { merge: true });
+                    window.showMessage('החבילה עודכנה בהצלחה!');
+                } else {
+                    const reference = document.getElementById('edit-ref').value;
+                    const amount = document.getElementById('edit-amount').value;
+                    await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'returns', id), {
+                        name,
+                        reference,
+                        tracking,
+                        amount
+                    }, { merge: true });
+                    window.showMessage('ההחזר עודכן בהצלחה!');
+                }
+                closeEditModal();
+            } catch (err) {
+                console.error("Edit save error:", err);
+                window.showMessage("שגיאה בעדכון הפריט בענן.", false);
+            }
+        }
 
         // ================= CAMERA & SCANNER LOGIC =================
         window.startScanner = function(targetInputId) {
@@ -603,9 +713,14 @@
                     <div class="pt-4 border-t border-gray-100 flex flex-col gap-3">
                         <div class="flex items-center justify-between text-xs font-bold text-gray-500">
                             <span>שנה סטטוס:</span>
-                            <button onclick="deletePackage('${pkg.id}')" class="text-red-400 hover:text-red-600 transition cursor-pointer" title="מחק חבילה">
-                                <i class="fa-solid fa-trash-can text-sm"></i>
-                            </button>
+                            <div class="flex items-center gap-2">
+                                <button onclick="openEditModal('package', '${pkg.id}')" class="text-blue-500 hover:text-blue-700 transition cursor-pointer" title="ערוך חבילה">
+                                    <i class="fa-solid fa-pen-to-square text-sm"></i>
+                                </button>
+                                <button onclick="deletePackage('${pkg.id}')" class="text-red-400 hover:text-red-600 transition cursor-pointer" title="מחק חבילה">
+                                    <i class="fa-solid fa-trash-can text-sm"></i>
+                                </button>
+                            </div>
                         </div>
                         
                         <div class="grid grid-cols-1 gap-2.5">
@@ -760,9 +875,14 @@
                     <div class="pt-4 border-t border-gray-100 flex flex-col gap-3">
                         <div class="flex items-center justify-between text-xs font-bold text-gray-500">
                             <span>שנה סטטוס החזר:</span>
-                            <button onclick="deleteReturn('${ret.id}')" class="text-red-400 hover:text-red-600 transition cursor-pointer" title="מחק החזר">
-                                <i class="fa-solid fa-trash-can text-sm"></i>
-                            </button>
+                            <div class="flex items-center gap-2">
+                                <button onclick="openEditModal('return', '${ret.id}')" class="text-blue-500 hover:text-blue-700 transition cursor-pointer" title="ערוך החזר">
+                                    <i class="fa-solid fa-pen-to-square text-sm"></i>
+                                </button>
+                                <button onclick="deleteReturn('${ret.id}')" class="text-red-400 hover:text-red-600 transition cursor-pointer" title="מחק החזר">
+                                    <i class="fa-solid fa-trash-can text-sm"></i>
+                                </button>
+                            </div>
                         </div>
                         
                         <div class="grid grid-cols-1 gap-2.5">
