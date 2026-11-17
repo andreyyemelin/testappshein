@@ -285,7 +285,7 @@
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-        import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyCrzGPPMh0nsNN5yuPKxjTSXaEkwvwXb9o",
@@ -304,16 +304,17 @@
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'shein-default-app';
 
         let appData = {
-            packages: [],
-            returns: []
+            packages: JSON.parse(localStorage.getItem('shein_packages') || '[]'),
+            returns: JSON.parse(localStorage.getItem('shein_returns') || '[]')
         };
 
         let currentPkgFilter = 'all';
         let currentReturnFilter = 'all';
         let activeTargetInputId = null;
         let isScannerRunning = false;
+        let useCloudSync = true;
 
-        // Initialize Firebase Authentication and Realtime listeners
+        // Initialize Firebase Authentication and Realtime listeners with robust fallback
         async function initFirebase() {
             try {
                 if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
@@ -327,41 +328,44 @@
                 // Listen to Packages in real-time
                 const pkgCol = collection(db, 'artifacts', appId, 'users', userId, 'packages');
                 onSnapshot(pkgCol, (snapshot) => {
-                    appData.packages = [];
-                    snapshot.forEach(docSnap => {
-                        appData.packages.push({ id: docSnap.id, ...docSnap.data() });
-                    });
-                    appData.packages.sort((a, b) => b.createdAt - a.createdAt);
-                    renderAll();
+                    if (!snapshot.empty) {
+                        appData.packages = [];
+                        snapshot.forEach(docSnap => {
+                            appData.packages.push({ id: docSnap.id, ...docSnap.data() });
+                        });
+                        appData.packages.sort((a, b) => b.createdAt - a.createdAt);
+                        localStorage.setItem('shein_packages', JSON.stringify(appData.packages));
+                        renderAll();
+                    }
                 }, (error) => {
-                    console.error("Packages sync error:", error);
+                    console.warn("Packages sync fallback to local storage:", error);
                 });
 
                 // Listen to Returns in real-time
                 const retCol = collection(db, 'artifacts', appId, 'users', userId, 'returns');
                 onSnapshot(retCol, (snapshot) => {
-                    appData.returns = [];
-                    snapshot.forEach(docSnap => {
-                        appData.returns.push({ id: docSnap.id, ...docSnap.data() });
-                    });
-                    appData.returns.sort((a, b) => b.createdAt - a.createdAt);
-                    renderAll();
+                    if (!snapshot.empty) {
+                        appData.returns = [];
+                        snapshot.forEach(docSnap => {
+                            appData.returns.push({ id: docSnap.id, ...docSnap.data() });
+                        });
+                        appData.returns.sort((a, b) => b.createdAt - a.createdAt);
+                        localStorage.setItem('shein_returns', JSON.stringify(appData.returns));
+                        renderAll();
+                    }
                 }, (error) => {
-                    console.error("Returns sync error:", error);
+                    console.warn("Returns sync fallback to local storage:", error);
                 });
 
             } catch (err) {
-                console.error("Firebase auth/init error:", err);
-                try {
-                    await signInAnonymously(auth);
-                } catch (e) {
-                    console.error("Fallback anonymous signin failed:", e);
-                }
+                console.warn("Firebase auth not enabled or configured, using local storage mode:", err);
+                useCloudSync = false;
             }
         }
 
         window.onload = function() {
             initFirebase();
+            renderAll();
         };
 
         // Authentication Handler
@@ -495,18 +499,6 @@
         window.saveNewPackage = async function(e) {
             e.preventDefault();
             
-            let user = auth.currentUser;
-            if (!user) {
-                try {
-                    const cred = await signInAnonymously(auth);
-                    user = cred.user;
-                } catch (err) {
-                    // Fallback to local offline mode if cloud fails temporarily, allowing smooth UX
-                    console.warn("Using offline fallback for user id");
-                }
-            }
-            const userId = user ? user.uid : 'default-user';
-
             const name = document.getElementById('pkg-name').value;
             const contents = document.getElementById('pkg-contents').value;
             const tracking = document.getElementById('pkg-tracking').value;
@@ -514,6 +506,7 @@
 
             const pkgId = 'pkg_' + Date.now();
             const newPkg = {
+                id: pkgId,
                 name,
                 contents,
                 tracking,
@@ -522,19 +515,27 @@
                 date: new Date().toLocaleDateString('he-IL')
             };
 
-            try {
-                await setDoc(doc(db, 'artifacts', appId, 'users', userId, 'packages', pkgId), newPkg);
-                window.closeAddPackageModal();
-                e.target.reset();
-                window.showMessage('החבילה נוספה בהצלחה!');
-            } catch (err) {
-                console.error(err);
-                // Save locally to appData as backup
-                appData.packages.unshift({ id: pkgId, ...newPkg });
-                window.closeAddPackageModal();
-                e.target.reset();
-                window.showMessage('החבילה נוספה בהצלחה (מקומי)!');
-                renderAll();
+            // Add immediately to local state and storage for instant responsiveness
+            appData.packages.unshift(newPkg);
+            localStorage.setItem('shein_packages', JSON.stringify(appData.packages));
+            renderAll();
+            window.closeAddPackageModal();
+            e.target.reset();
+            window.showMessage('החבילה נוספה בהצלחה!');
+
+            // Save to Firebase if enabled
+            if (useCloudSync) {
+                try {
+                    let user = auth.currentUser;
+                    if (!user) {
+                        const cred = await signInAnonymously(auth);
+                        user = cred.user;
+                    }
+                    const userId = user ? user.uid : 'default-user';
+                    await setDoc(doc(db, 'artifacts', appId, 'users', userId, 'packages', pkgId), newPkg);
+                } catch (err) {
+                    console.error("Cloud sync note:", err);
+                }
             }
         }
 
@@ -554,23 +555,40 @@
         }
 
         window.updatePackageStatus = async function(pkgId, newStatus) {
-            const user = auth.currentUser;
-            if (!user) return;
-            try {
-                await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'packages', pkgId), { status: newStatus }, { merge: true });
-            } catch (err) {
-                console.error(err);
+            const pkg = appData.packages.find(p => p.id === pkgId);
+            if (pkg) {
+                pkg.status = newStatus;
+                localStorage.setItem('shein_packages', JSON.stringify(appData.packages));
+                renderAll();
+            }
+
+            if (useCloudSync) {
+                try {
+                    const user = auth.currentUser;
+                    if (user) {
+                        await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'packages', pkgId), { status: newStatus }, { merge: true });
+                    }
+                } catch (err) {
+                    console.error(err);
+                }
             }
         }
 
         window.deletePackage = async function(pkgId) {
-            const user = auth.currentUser;
-            if (!user) return;
-            try {
-                await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'packages', pkgId));
-                window.showMessage('החבילה נמחקה בהצלחה.');
-            } catch (err) {
-                console.error(err);
+            appData.packages = appData.packages.filter(p => p.id !== pkgId);
+            localStorage.setItem('shein_packages', JSON.stringify(appData.packages));
+            renderAll();
+            window.showMessage('החבילה נמחקה בהצלחה.');
+
+            if (useCloudSync) {
+                try {
+                    const user = auth.currentUser;
+                    if (user) {
+                        await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'packages', pkgId));
+                    }
+                } catch (err) {
+                    console.error(err);
+                }
             }
         }
 
@@ -665,17 +683,6 @@
         window.saveNewReturn = async function(e) {
             e.preventDefault();
 
-            let user = auth.currentUser;
-            if (!user) {
-                try {
-                    const cred = await signInAnonymously(auth);
-                    user = cred.user;
-                } catch (err) {
-                    console.warn("Using offline fallback for user id");
-                }
-            }
-            const userId = user ? user.uid : 'default-user';
-
             const name = document.getElementById('ret-name').value;
             const reference = document.getElementById('ret-ref').value;
             const tracking = document.getElementById('ret-tracking').value;
@@ -683,6 +690,7 @@
 
             const retId = 'ret_' + Date.now();
             const newReturn = {
+                id: retId,
                 name,
                 reference,
                 tracking,
@@ -692,18 +700,27 @@
                 date: new Date().toLocaleDateString('he-IL')
             };
 
-            try {
-                await setDoc(doc(db, 'artifacts', appId, 'users', userId, 'returns', retId), newReturn);
-                window.closeAddReturnModal();
-                e.target.reset();
-                window.showMessage('ההחזר נוסף בהצלחה!');
-            } catch (err) {
-                console.error(err);
-                appData.returns.unshift({ id: retId, ...newReturn });
-                window.closeAddReturnModal();
-                e.target.reset();
-                window.showMessage('ההחזר נוסף בהצלחה (מקומי)!');
-                renderAll();
+            // Add immediately to local state and storage
+            appData.returns.unshift(newReturn);
+            localStorage.setItem('shein_returns', JSON.stringify(appData.returns));
+            renderAll();
+            window.closeAddReturnModal();
+            e.target.reset();
+            window.showMessage('ההחזר נוסף בהצלחה!');
+
+            // Save to Firebase if enabled
+            if (useCloudSync) {
+                try {
+                    let user = auth.currentUser;
+                    if (!user) {
+                        const cred = await signInAnonymously(auth);
+                        user = cred.user;
+                    }
+                    const userId = user ? user.uid : 'default-user';
+                    await setDoc(doc(db, 'artifacts', appId, 'users', userId, 'returns', retId), newReturn);
+                } catch (err) {
+                    console.error("Cloud sync note:", err);
+                }
             }
         }
 
@@ -723,23 +740,40 @@
         }
 
         window.updateReturnStatus = async function(retId, newStatus) {
-            const user = auth.currentUser;
-            if (!user) return;
-            try {
-                await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'returns', retId), { status: newStatus }, { merge: true });
-            } catch (err) {
-                console.error(err);
+            const ret = appData.returns.find(r => r.id === retId);
+            if (ret) {
+                ret.status = newStatus;
+                localStorage.setItem('shein_returns', JSON.stringify(appData.returns));
+                renderAll();
+            }
+
+            if (useCloudSync) {
+                try {
+                    const user = auth.currentUser;
+                    if (user) {
+                        await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'returns', retId), { status: newStatus }, { merge: true });
+                    }
+                } catch (err) {
+                    console.error(err);
+                }
             }
         }
 
         window.deleteReturn = async function(retId) {
-            const user = auth.currentUser;
-            if (!user) return;
-            try {
-                await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'returns', retId));
-                window.showMessage('ההחזר נמחק בהצלחה.');
-            } catch (err) {
-                console.error(err);
+            appData.returns = appData.returns.filter(r => r.id !== retId);
+            localStorage.setItem('shein_returns', JSON.stringify(appData.returns));
+            renderAll();
+            window.showMessage('ההחזר נמחק בהצלחה.');
+
+            if (useCloudSync) {
+                try {
+                    const user = auth.currentUser;
+                    if (user) {
+                        await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'returns', retId));
+                    }
+                } catch (err) {
+                    console.error(err);
+                }
             }
         }
 
