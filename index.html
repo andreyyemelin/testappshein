@@ -284,7 +284,6 @@
     <!-- FIREBASE AND APP LOGIC -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         const firebaseConfig = {
@@ -299,7 +298,6 @@
 
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
-        const auth = getAuth(app);
 
         const appId = typeof __app_id !== 'undefined' ? __app_id : 'shein-default-app';
 
@@ -313,17 +311,9 @@
         let activeTargetInputId = null;
         let isScannerRunning = false;
 
-        // Initialize Firebase Authentication strictly and subscribe to cloud database in real-time
-        async function initFirebase() {
+        // Initialize Firebase Cloud Connection directly without Auth restriction
+        function initFirebase() {
             try {
-                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-                    await signInWithCustomToken(auth, __initial_auth_token);
-                } else {
-                    await signInAnonymously(auth);
-                }
-
-                const userId = auth.currentUser ? auth.currentUser.uid : 'default-user';
-
                 // Strictly cloud collection paths according to rules
                 const pkgCol = collection(db, 'artifacts', appId, 'public', 'data', 'packages');
                 onSnapshot(pkgCol, (snapshot) => {
@@ -335,7 +325,6 @@
                     renderAll();
                 }, (error) => {
                     console.error("Firebase packages sync error:", error);
-                    window.showMessage("שגיאת סנכרון חבילות מול הענן.", false);
                 });
 
                 const retCol = collection(db, 'artifacts', appId, 'public', 'data', 'returns');
@@ -348,12 +337,10 @@
                     renderAll();
                 }, (error) => {
                     console.error("Firebase returns sync error:", error);
-                    window.showMessage("שגיאת סנכרון החזרים מול הענן.", false);
                 });
 
             } catch (err) {
-                console.error("Firebase Auth initialization error:", err);
-                window.showMessage("שגיאת התחברות לענן.", false);
+                console.error("Firebase initialization error:", err);
             }
         }
 
@@ -510,16 +497,6 @@
             };
 
             try {
-                let user = auth.currentUser;
-                if (!user) {
-                    const cred = await signInAnonymously(auth);
-                    user = cred.user;
-                }
-                if (!user) {
-                    window.showMessage("שגיאת אימות מול הענן.", false);
-                    return;
-                }
-
                 // Save directly to public shared collection in cloud
                 await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'packages', pkgId), newPkg);
                 window.closeAddPackageModal();
@@ -674,16 +651,6 @@
             };
 
             try {
-                let user = auth.currentUser;
-                if (!user) {
-                    const cred = await signInAnonymously(auth);
-                    user = cred.user;
-                }
-                if (!user) {
-                    window.showMessage("שגיאת אימות מול הענן.", false);
-                    return;
-                }
-
                 await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'returns', retId), newReturn);
                 window.closeAddReturnModal();
                 e.target.reset();
