@@ -63,7 +63,9 @@
                     </div>
                     <div>
                         <h1 class="font-black text-xl text-gray-900 leading-tight">ניהול חבילות והחזרים</h1>
-                        <p class="text-xs text-gray-400 font-medium">המערכת האישית שלך</p>
+                        <p class="text-xs text-gray-400 font-medium flex items-center gap-1.5">
+                            <span class="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span> מסונכרן בענן (Firebase)
+                        </p>
                     </div>
                 </div>
             </div>
@@ -279,11 +281,29 @@
         </div>
     </div>
 
-    <!-- JAVASCRIPT LOGIC -->
-    <script>
-        // Local Data State
+    <!-- FIREBASE AND APP LOGIC -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, doc, setDoc, deleteDoc, onSnapshot } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        const firebaseConfig = {
+            apiKey: "AIzaSyCrzGPPMh0nsNN5yuPKxjTSXaEkwvwXb9o",
+            authDomain: "shein-app-399ba.firebaseapp.com",
+            projectId: "shein-app-399ba",
+            storageBucket: "shein-app-399ba.firebasestorage.app",
+            messagingSenderId: "712468621656",
+            appId: "1:712468621656:web:dadcf48acf04ecd7d6dd2d",
+            measurementId: "G-GQ5HLYZHXD"
+        };
+
+        const app = initializeApp(firebaseConfig);
+        const db = getFirestore(app);
+        const auth = getAuth(app);
+
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'shein-default-app';
+
         let appData = {
-            password: '2712',
             packages: [],
             returns: []
         };
@@ -293,25 +313,55 @@
         let activeTargetInputId = null;
         let isScannerRunning = false;
 
-        // Load data on startup
-        window.onload = function() {
-            const saved = localStorage.getItem('shein_tracker_data');
-            if (saved) {
-                try {
-                    const parsed = JSON.parse(saved);
-                    appData.packages = parsed.packages || [];
-                    appData.returns = parsed.returns || [];
-                } catch(e) { console.error(e); }
-            }
-            appData.password = '2712';
-        };
+        // Initialize Firebase Authentication and Realtime listeners
+        async function initFirebase() {
+            try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
+                }
 
-        function saveData() {
-            localStorage.setItem('shein_tracker_data', JSON.stringify(appData));
+                const userId = auth.currentUser ? auth.currentUser.uid : 'default-user';
+
+                // Listen to Packages in real-time
+                const pkgCol = collection(db, 'artifacts', appId, 'users', userId, 'packages');
+                onSnapshot(pkgCol, (snapshot) => {
+                    appData.packages = [];
+                    snapshot.forEach(docSnap => {
+                        appData.packages.push({ id: docSnap.id, ...docSnap.data() });
+                    });
+                    // Sort by newest
+                    appData.packages.sort((a, b) => b.createdAt - a.createdAt);
+                    renderAll();
+                }, (error) => {
+                    console.error("Packages sync error:", error);
+                });
+
+                // Listen to Returns in real-time
+                const retCol = collection(db, 'artifacts', appId, 'users', userId, 'returns');
+                onSnapshot(retCol, (snapshot) => {
+                    appData.returns = [];
+                    snapshot.forEach(docSnap => {
+                        appData.returns.push({ id: docSnap.id, ...docSnap.data() });
+                    });
+                    appData.returns.sort((a, b) => b.createdAt - a.createdAt);
+                    renderAll();
+                }, (error) => {
+                    console.error("Returns sync error:", error);
+                });
+
+            } catch (err) {
+                console.error("Firebase auth/init error:", err);
+            }
         }
 
+        window.onload = function() {
+            initFirebase();
+        };
+
         // Authentication Handler
-        function handleLogin(e) {
+        window.handleLogin = function(e) {
             e.preventDefault();
             const val = document.getElementById('password-input').value;
             if (val === '2712') {
@@ -323,7 +373,7 @@
             }
         }
 
-        function showMessage(msg, isSuccess = true) {
+        window.showMessage = function(msg, isSuccess = true) {
             document.getElementById('custom-modal-msg').innerText = msg;
             document.getElementById('custom-modal-icon').innerHTML = isSuccess 
                 ? '<i class="fa-solid fa-circle-check text-green-500"></i>' 
@@ -331,12 +381,12 @@
             document.getElementById('custom-modal').classList.remove('hidden');
         }
 
-        function closeCustomModal() {
+        window.closeCustomModal = function() {
             document.getElementById('custom-modal').classList.add('hidden');
         }
 
         // Tab Navigation
-        function switchTab(tab) {
+        window.switchTab = function(tab) {
             const pkgBtn = document.getElementById('tab-packages');
             const retBtn = document.getElementById('tab-returns');
             const pkgView = document.getElementById('view-packages');
@@ -364,24 +414,23 @@
         }
 
         // Modal Controls
-        function openAddPackageModal() { document.getElementById('modal-package').classList.remove('hidden'); }
-        function closeAddPackageModal() { document.getElementById('modal-package').classList.add('hidden'); }
-        function openAddReturnModal() { document.getElementById('modal-return').classList.remove('hidden'); }
-        function closeAddReturnModal() { document.getElementById('modal-return').classList.add('hidden'); }
+        window.openAddPackageModal = function() { document.getElementById('modal-package').classList.remove('hidden'); }
+        window.closeAddPackageModal = function() { document.getElementById('modal-package').classList.add('hidden'); }
+        window.openAddReturnModal = function() { document.getElementById('modal-return').classList.remove('hidden'); }
+        window.closeAddReturnModal = function() { document.getElementById('modal-return').classList.add('hidden'); }
 
         // ================= CAMERA & SCANNER LOGIC =================
-        function startScanner(targetInputId) {
+        window.startScanner = function(targetInputId) {
             activeTargetInputId = targetInputId;
             document.getElementById('scanner-modal').classList.remove('hidden');
 
-            // Initialize Quagga for professional 1D Barcode scanning (Code_128, EAN, etc.)
             Quagga.init({
                 inputStream: {
                     name: "Live",
                     type: "LiveStream",
                     target: document.querySelector('#interactive'),
                     constraints: {
-                        facingMode: "environment" // Use back camera on phones
+                        facingMode: "environment"
                     },
                 },
                 decoder: {
@@ -397,7 +446,7 @@
             }, function(err) {
                 if (err) {
                     console.error("Quagga initialization failed:", err);
-                    showMessage("לא ניתן להפעיל את סורק הברקודים. אנא הזן ידנית.", false);
+                    window.showMessage("לא ניתן להפעיל את סורק הברקודים. אנא הזן ידנית.", false);
                     return;
                 }
                 Quagga.start();
@@ -407,16 +456,15 @@
             Quagga.onDetected(function(result) {
                 if (result && result.codeResult && result.codeResult.code) {
                     let code = result.codeResult.code;
-                    // Clean up asterisks if detected from 1D barcode tags (e.g. *98502271*)
                     code = code.replace(/\*/g, '');
                     if (code.length >= 4) {
-                        applyScannedCode(code);
+                        window.applyScannedCode(code);
                     }
                 }
             });
         }
 
-        function stopScanner() {
+        window.stopScanner = function() {
             if (isScannerRunning) {
                 try {
                     Quagga.stop();
@@ -427,44 +475,51 @@
             document.getElementById('manual-scan-input').value = '';
         }
 
-        function applyScannedCode(code) {
+        window.applyScannedCode = function(code) {
             if (!code) return;
-            stopScanner();
+            window.stopScanner();
             if (activeTargetInputId) {
                 const inputEl = document.getElementById(activeTargetInputId);
                 if (inputEl) {
                     inputEl.value = code.trim();
                 }
             }
-            showMessage("הברקוד נסרק ונקלט בהצלחה: " + code);
+            window.showMessage("הברקוד נסרק ונקלט בהצלחה: " + code);
         }
 
         // ================= PACKAGES LOGIC =================
-        function saveNewPackage(e) {
+        window.saveNewPackage = async function(e) {
             e.preventDefault();
+            const user = auth.currentUser;
+            if (!user) return;
+
             const name = document.getElementById('pkg-name').value;
             const contents = document.getElementById('pkg-contents').value;
             const tracking = document.getElementById('pkg-tracking').value;
             const status = document.getElementById('pkg-status').value;
 
+            const pkgId = 'pkg_' + Date.now();
             const newPkg = {
-                id: 'pkg_' + Date.now(),
                 name,
                 contents,
                 tracking,
                 status,
+                createdAt: Date.now(),
                 date: new Date().toLocaleDateString('he-IL')
             };
 
-            appData.packages.unshift(newPkg);
-            saveData();
-            closeAddPackageModal();
-            e.target.reset();
-            renderAll();
-            showMessage('החבילה נוספה בהצלחה!');
+            try {
+                await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'packages', pkgId), newPkg);
+                window.closeAddPackageModal();
+                e.target.reset();
+                window.showMessage('החבילה נוספה בהצלחה!');
+            } catch (err) {
+                console.error(err);
+                window.showMessage('שגיאה בשמירת החבילה בענן', false);
+            }
         }
 
-        function filterPackages(status) {
+        window.filterPackages = function(status) {
             currentPkgFilter = status;
             ['all', 'הוזמן', 'בדרך', 'מחכה לאיסוף', 'נאסף'].forEach(s => {
                 const btn = document.getElementById(`pkg-filter-${s}`);
@@ -479,20 +534,25 @@
             renderPackages();
         }
 
-        function updatePackageStatus(pkgId, newStatus) {
-            const pkg = appData.packages.find(p => p.id === pkgId);
-            if (pkg) {
-                pkg.status = newStatus;
-                saveData();
-                renderAll();
+        window.updatePackageStatus = async function(pkgId, newStatus) {
+            const user = auth.currentUser;
+            if (!user) return;
+            try {
+                await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'packages', pkgId), { status: newStatus }, { merge: true });
+            } catch (err) {
+                console.error(err);
             }
         }
 
-        function deletePackage(pkgId) {
-            appData.packages = appData.packages.filter(p => p.id !== pkgId);
-            saveData();
-            renderAll();
-            showMessage('החבילה נמחקה בהצלחה.');
+        window.deletePackage = async function(pkgId) {
+            const user = auth.currentUser;
+            if (!user) return;
+            try {
+                await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'packages', pkgId));
+                window.showMessage('החבילה נמחקה בהצלחה.');
+            } catch (err) {
+                console.error(err);
+            }
         }
 
         function renderPackages() {
@@ -583,32 +643,39 @@
 
 
         // ================= RETURNS LOGIC =================
-        function saveNewReturn(e) {
+        window.saveNewReturn = async function(e) {
             e.preventDefault();
+            const user = auth.currentUser;
+            if (!user) return;
+
             const name = document.getElementById('ret-name').value;
             const reference = document.getElementById('ret-ref').value;
             const tracking = document.getElementById('ret-tracking').value;
             const amount = document.getElementById('ret-amount').value;
 
+            const retId = 'ret_' + Date.now();
             const newReturn = {
-                id: 'ret_' + Date.now(),
                 name,
                 reference,
                 tracking,
                 amount,
                 status: 'האיסוף נפתח',
+                createdAt: Date.now(),
                 date: new Date().toLocaleDateString('he-IL')
             };
 
-            appData.returns.unshift(newReturn);
-            saveData();
-            closeAddReturnModal();
-            e.target.reset();
-            renderAll();
-            showMessage('ההחזר נוסף בהצלחה!');
+            try {
+                await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'returns', retId), newReturn);
+                window.closeAddReturnModal();
+                e.target.reset();
+                window.showMessage('ההחזר נוסף בהצלחה!');
+            } catch (err) {
+                console.error(err);
+                window.showMessage('שגיאה בשמירת ההחזר בענן', false);
+            }
         }
 
-        function filterReturns(status) {
+        window.filterReturns = function(status) {
             currentReturnFilter = status;
             ['all', 'האיסוף נפתח', 'החבילה ארוזה ומוכנה לשליחה', 'החבילה מוכנה להחזר', 'התשלום הוחזר'].forEach(s => {
                 const btn = document.getElementById(`ret-filter-${s}`);
@@ -623,20 +690,25 @@
             renderReturns();
         }
 
-        function updateReturnStatus(retId, newStatus) {
-            const ret = appData.returns.find(r => r.id === retId);
-            if (ret) {
-                ret.status = newStatus;
-                saveData();
-                renderAll();
+        window.updateReturnStatus = async function(retId, newStatus) {
+            const user = auth.currentUser;
+            if (!user) return;
+            try {
+                await setDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'returns', retId), { status: newStatus }, { merge: true });
+            } catch (err) {
+                console.error(err);
             }
         }
 
-        function deleteReturn(retId) {
-            appData.returns = appData.returns.filter(r => r.id !== retId);
-            saveData();
-            renderAll();
-            showMessage('ההחזר נמחק בהצלחה.');
+        window.deleteReturn = async function(retId) {
+            const user = auth.currentUser;
+            if (!user) return;
+            try {
+                await deleteDoc(doc(db, 'artifacts', appId, 'users', user.uid, 'returns', retId));
+                window.showMessage('ההחזר נמחק בהצלחה.');
+            } catch (err) {
+                console.error(err);
+            }
         }
 
         function renderReturns() {
