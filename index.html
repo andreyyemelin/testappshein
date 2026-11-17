@@ -8,6 +8,8 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- FontAwesome Icons -->
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- QuaggaJS Barcode Scanner Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
     <!-- Google Fonts: Heebo / Inter -->
     <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
     <script>
@@ -250,13 +252,16 @@
     <!-- SCANNER MODAL (CAMERA) -->
     <div id="scanner-modal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center p-4 hidden">
         <div class="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl text-center relative">
-            <h3 class="text-lg font-black text-gray-900 mb-2">סריקת ברקוד או QR</h3>
-            <p class="text-xs text-gray-500 mb-4">כוון את המצלמה אל הברקוד של החבילה</p>
-            <div class="relative w-full h-64 bg-black rounded-2xl overflow-hidden mb-4 flex items-center justify-center">
-                <video id="scanner-video" class="w-full h-full object-cover" autoplay playsinline muted></video>
-                <div class="absolute inset-0 border-2 border-dashed border-sheinPink/80 pointer-events-none m-8 rounded-xl"></div>
+            <h3 class="text-lg font-black text-gray-900 mb-1">סריקת ברקוד חבילה</h3>
+            <p class="text-xs text-gray-500 mb-4">כוון את המצלמה על הברקוד (כמו בתווית שיין)</p>
+            <div id="interactive" class="viewport relative w-full h-64 bg-black rounded-2xl overflow-hidden mb-4 flex items-center justify-center">
+                <video class="w-full h-full object-cover" autoplay playsinline muted></video>
+                <canvas class="drawingBuffer absolute inset-0 w-full h-full pointer-events-none"></canvas>
+                <div class="absolute inset-0 border-2 border-dashed border-sheinPink/80 pointer-events-none m-8 rounded-xl flex items-center justify-center">
+                    <div class="w-full h-0.5 bg-red-500/80 animate-pulse"></div>
+                </div>
             </div>
-            <!-- Fallback input for manual code entry via camera if BarcodeDetector isn't natively supported -->
+            <!-- Fallback input for manual code entry via camera if needed -->
             <div class="mb-4">
                 <input type="text" id="manual-scan-input" placeholder="או הזן קוד ידנית כאן..." class="w-full px-3 py-2 text-xs rounded-xl border border-gray-300 text-center font-mono">
                 <button type="button" onclick="applyScannedCode(document.getElementById('manual-scan-input').value)" class="mt-2 w-full bg-sheinPink text-white py-2 rounded-xl text-xs font-bold">אישור קוד ידני</button>
@@ -286,9 +291,7 @@
         let currentPkgFilter = 'all';
         let currentReturnFilter = 'all';
         let activeTargetInputId = null;
-        let videoStream = null;
-        let barcodeDetector = null;
-        let scanInterval = null;
+        let isScannerRunning = false;
 
         // Load data on startup
         window.onload = function() {
@@ -367,45 +370,58 @@
         function closeAddReturnModal() { document.getElementById('modal-return').classList.add('hidden'); }
 
         // ================= CAMERA & SCANNER LOGIC =================
-        async function startScanner(targetInputId) {
+        function startScanner(targetInputId) {
             activeTargetInputId = targetInputId;
             document.getElementById('scanner-modal').classList.remove('hidden');
-            const videoElement = document.getElementById('scanner-video');
 
-            if ('BarcodeDetector' in window) {
-                try {
-                    barcodeDetector = new BarcodeDetector({ formats: ['code_128', 'qr_code', 'ean_13', 'code_39', 'upc_a'] });
-                } catch (err) {
-                    console.log('Barcode Detector not supported, using manual fallback');
+            // Initialize Quagga for professional 1D Barcode scanning (Code_128, EAN, etc.)
+            Quagga.init({
+                inputStream: {
+                    name: "Live",
+                    type: "LiveStream",
+                    target: document.querySelector('#interactive'),
+                    constraints: {
+                        facingMode: "environment" // Use back camera on phones
+                    },
+                },
+                decoder: {
+                    readers: [
+                        "code_128_reader",
+                        "ean_reader",
+                        "ean_8_reader",
+                        "code_39_reader",
+                        "upc_reader"
+                    ]
+                },
+                locate: true
+            }, function(err) {
+                if (err) {
+                    console.error("Quagga initialization failed:", err);
+                    showMessage("לא ניתן להפעיל את סורק הברקודים. אנא הזן ידנית.", false);
+                    return;
                 }
-            }
+                Quagga.start();
+                isScannerRunning = true;
+            });
 
-            try {
-                videoStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
-                videoElement.srcObject = videoStream;
-                videoElement.play();
-
-                if (barcodeDetector) {
-                    scanInterval = setInterval(async () => {
-                        try {
-                            const barcodes = await barcodeDetector.detect(videoElement);
-                            if (barcodes.length > 0) {
-                                applyScannedCode(barcodes[0].rawValue);
-                            }
-                        } catch (e) {}
-                    }, 500);
+            Quagga.onDetected(function(result) {
+                if (result && result.codeResult && result.codeResult.code) {
+                    let code = result.codeResult.code;
+                    // Clean up asterisks if detected from 1D barcode tags (e.g. *98502271*)
+                    code = code.replace(/\*/g, '');
+                    if (code.length >= 4) {
+                        applyScannedCode(code);
+                    }
                 }
-            } catch (err) {
-                console.error("Camera access error:", err);
-                showMessage("לא ניתן לגשת למצלמה. אנא הזן ידנית.", false);
-            }
+            });
         }
 
         function stopScanner() {
-            if (scanInterval) clearInterval(scanInterval);
-            if (videoStream) {
-                videoStream.getTracks().forEach(track => track.stop());
-                videoStream = null;
+            if (isScannerRunning) {
+                try {
+                    Quagga.stop();
+                } catch(e) {}
+                isScannerRunning = false;
             }
             document.getElementById('scanner-modal').classList.add('hidden');
             document.getElementById('manual-scan-input').value = '';
@@ -413,14 +429,14 @@
 
         function applyScannedCode(code) {
             if (!code) return;
+            stopScanner();
             if (activeTargetInputId) {
                 const inputEl = document.getElementById(activeTargetInputId);
                 if (inputEl) {
-                    inputEl.value = code;
+                    inputEl.value = code.trim();
                 }
             }
-            stopScanner();
-            showMessage("קוד הונפק ונקלט בהצלחה!");
+            showMessage("הברקוד נסרק ונקלט בהצלחה: " + code);
         }
 
         // ================= PACKAGES LOGIC =================
