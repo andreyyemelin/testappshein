@@ -1,0 +1,733 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SHEIN Package & Return Tracker</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts: Heebo / Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        sheinPink: '#ff6600',
+                        sheinPinkHover: '#e05a00',
+                        sheinDark: '#111111',
+                    },
+                    fontFamily: {
+                        sans: ['Heebo', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+</head>
+<body class="bg-gray-50 font-sans text-gray-800 min-h-screen flex flex-col antialiased">
+
+    <!-- PASSWORD PROTECTION OVERLAY -->
+    <div id="auth-overlay" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+        <div class="bg-white rounded-3xl p-8 max-w-md w-full shadow-2xl border border-gray-100 text-center">
+            <div class="w-16 h-16 bg-orange-100 text-sheinPink rounded-2xl flex items-center justify-center text-2xl mx-auto mb-4 shadow-inner overflow-hidden p-2">
+                <img src="https://m.shein.com/il/logo/192.png" alt="SHEIN" class="h-full w-auto object-contain">
+            </div>
+            <h2 class="text-2xl font-black text-gray-900 mb-2">מעקב חבילות אישי</h2>
+            <p class="text-gray-500 text-sm mb-6">אנא הזן סיסמה כדי להיכנס לאזור האישי שלך</p>
+            <form onsubmit="handleLogin(event)" class="space-y-4">
+                <div class="relative">
+                    <input type="password" id="password-input" placeholder="הכנס סיסמה..." required
+                        class="w-full px-4 py-3.5 rounded-2xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-sheinPink text-center font-bold tracking-widest text-lg bg-gray-50">
+                </div>
+                <button type="submit" class="w-full bg-sheinDark hover:bg-black text-white py-3.5 rounded-2xl font-bold shadow-lg transition duration-200">
+                    כניסה למערכת
+                </button>
+                <p id="login-error" class="text-red-500 text-xs font-semibold hidden mt-2">סיסמה שגויה, נסה שוב.</p>
+            </form>
+        </div>
+    </div>
+
+    <!-- MAIN APP CONTAINER -->
+    <div id="app-container" class="flex-1 flex flex-col hidden">
+        <!-- Header -->
+        <header class="bg-white border-b border-gray-100 sticky top-0 z-30 shadow-xs">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                    <div class="bg-orange-50 p-2.5 rounded-2xl border border-orange-100 w-12 h-12 flex items-center justify-center overflow-hidden">
+                        <img src="https://m.shein.com/il/logo/192.png" alt="SHEIN" class="h-full w-auto object-contain">
+                    </div>
+                    <div>
+                        <h1 class="font-black text-xl text-gray-900 leading-tight">ניהול חבילות והחזרים</h1>
+                        <p class="text-xs text-gray-400 font-medium">המערכת האישית שלך</p>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <!-- Navigation Tabs -->
+        <div class="bg-white border-b border-gray-200 shadow-xs">
+            <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex gap-4">
+                <button onclick="switchTab('packages')" id="tab-packages" class="py-4 px-6 font-bold text-sm border-b-2 border-sheinPink text-sheinPink flex items-center gap-2 transition">
+                    <i class="fa-solid fa-box"></i> חבילות (<span id="tab-pkg-count">0</span>)
+                </button>
+                <button onclick="switchTab('returns')" id="tab-returns" class="py-4 px-6 font-bold text-sm border-b-2 border-transparent text-gray-500 hover:text-gray-800 flex items-center gap-2 transition">
+                    <i class="fa-solid fa-box-archive"></i> החזרים (<span id="tab-ret-count">0</span>)
+                </button>
+            </div>
+        </div>
+
+        <!-- Content Body -->
+        <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 flex-1 w-full">
+            
+            <!-- TAB 1: PACKAGES -->
+            <div id="view-packages" class="space-y-6">
+                <!-- Action bar & Search -->
+                <div class="flex flex-col gap-4 bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
+                    <div class="flex flex-col sm:flex-row justify-between items-center gap-4">
+                        <!-- Filters -->
+                        <div class="flex items-center gap-2 overflow-x-auto pb-2 sm:pb-0 w-full sm:w-auto">
+                            <button onclick="filterPackages('all')" id="pkg-filter-all" class="px-3.5 py-2 rounded-xl text-xs font-bold bg-sheinDark text-white whitespace-nowrap shadow-sm">הכל (<span id="count-pkg-all">0</span>)</button>
+                            <button onclick="filterPackages('הוזמן')" id="pkg-filter-הוזמן" class="px-3.5 py-2 rounded-xl text-xs font-bold bg-gray-100 text-gray-600 whitespace-nowrap hover:bg-gray-200 transition">הוזמן (<span id="count-pkg-הוזמן">0</span>)</button>
+                            <button onclick="filterPackages('בדרך')" id="pkg-filter-בדרך" class="px-3.5 py-2 rounded-xl text-xs font-bold bg-gray-100 text-gray-600 whitespace-nowrap hover:bg-gray-200 transition">בדרך (<span id="count-pkg-בדרך">0</span>)</button>
+                            <button onclick="filterPackages('מחכה לאיסוף')" id="pkg-filter-מחכה לאיסוף" class="px-3.5 py-2 rounded-xl text-xs font-bold bg-gray-100 text-gray-600 whitespace-nowrap hover:bg-gray-200 transition">מחכה לאיסוף (<span id="count-pkg-מחכה לאיסוף">0</span>)</button>
+                            <button onclick="filterPackages('נאסף')" id="pkg-filter-נאסף" class="px-3.5 py-2 rounded-xl text-xs font-bold bg-gray-100 text-gray-600 whitespace-nowrap hover:bg-gray-200 transition">נאסף (<span id="count-pkg-נאסף">0</span>)</button>
+                        </div>
+
+                        <button onclick="openAddPackageModal()" class="w-full sm:w-auto bg-sheinPink hover:bg-sheinPinkHover text-white px-5 py-2.5 rounded-xl font-bold text-sm shadow-md transition flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap">
+                            <i class="fa-solid fa-plus"></i> הוסף חבילה חדשה
+                        </button>
+                    </div>
+
+                    <!-- Search Bar -->
+                    <div class="relative w-full">
+                        <i class="fa-solid fa-magnifying-glass absolute right-4 top-3.5 text-gray-400"></i>
+                        <input type="text" id="pkg-search" oninput="renderPackages()" placeholder="חיפוש חבילה לפי שם או מספר מעקב..." 
+                            class="w-full pr-11 pl-4 py-3 rounded-xl border border-gray-200 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-sheinPink text-sm">
+                    </div>
+                </div>
+
+                <!-- Packages Grid -->
+                <div id="packages-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                    <!-- Dynamic Package Cards -->
+                </div>
+            </div>
+
+            <!-- TAB 2: RETURNS -->
+            <div id="view-returns" class="space-y-6 hidden">
+                <!-- Action bar & Search -->
+                <div class="flex flex-col gap-4 bg-white p-4 rounded-2xl shadow-sm border border-gray-100">
+                    <div class="flex flex-col sm:flex-row justify-between items-center gap-4">
+                        <!-- Filters -->
+                        <div class="flex items-center gap-2 overflow-x-auto pb-2 sm:pb-0 w-full sm:w-auto">
+                            <button onclick="filterReturns('all')" id="ret-filter-all" class="px-3.5 py-2 rounded-xl text-xs font-bold bg-sheinDark text-white whitespace-nowrap shadow-sm">הכל (<span id="count-ret-all">0</span>)</button>
+                            <button onclick="filterReturns('האיסוף נפתח')" id="ret-filter-האיסוף נפתח" class="px-3.5 py-2 rounded-xl text-xs font-bold bg-gray-100 text-gray-600 whitespace-nowrap hover:bg-gray-200 transition">האיסוף נפתח (<span id="count-ret-האיסוף נפתח">0</span>)</button>
+                            <button onclick="filterReturns('החבילה ארוזה ומוכנה לשליחה')" id="ret-filter-החבילה ארוזה ומוכנה לשליחה" class="px-3.5 py-2 rounded-xl text-xs font-bold bg-gray-100 text-gray-600 whitespace-nowrap hover:bg-gray-200 transition">ארוזה ומוכנה (<span id="count-ret-החבילה ארוזה ומוכנה לשליחה">0</span>)</button>
+                            <button onclick="filterReturns('החבילה מוכנה להחזר')" id="ret-filter-החבילה מוכנה להחזר" class="px-3.5 py-2 rounded-xl text-xs font-bold bg-gray-100 text-gray-600 whitespace-nowrap hover:bg-gray-200 transition">מוכנה להחזר (<span id="count-ret-החבילה מוכנה להחזר">0</span>)</button>
+                            <button onclick="filterReturns('התשלום הוחזר')" id="ret-filter-התשלום הוחזר" class="px-3.5 py-2 rounded-xl text-xs font-bold bg-gray-100 text-gray-600 whitespace-nowrap hover:bg-gray-200 transition">התשלום הוחזר (<span id="count-ret-התשלום הוחזר">0</span>)</button>
+                        </div>
+
+                        <button onclick="openAddReturnModal()" class="w-full sm:w-auto bg-sheinDark hover:bg-black text-white px-5 py-2.5 rounded-xl font-bold text-sm shadow-md transition flex items-center justify-center gap-2 cursor-pointer whitespace-nowrap">
+                            <i class="fa-solid fa-plus"></i> הוסף החזר חדש
+                        </button>
+                    </div>
+
+                    <!-- Search Bar -->
+                    <div class="relative w-full">
+                        <i class="fa-solid fa-magnifying-glass absolute right-4 top-3.5 text-gray-400"></i>
+                        <input type="text" id="ret-search" oninput="renderReturns()" placeholder="חיפוש החזר לפי שם, אסמכתא או מספר מעקב..." 
+                            class="w-full pr-11 pl-4 py-3 rounded-xl border border-gray-200 bg-gray-50 focus:outline-none focus:ring-2 focus:ring-sheinDark text-sm">
+                    </div>
+                </div>
+
+                <!-- Returns Grid -->
+                <div id="returns-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+                    <!-- Dynamic Return Cards -->
+                </div>
+            </div>
+
+        </main>
+    </div>
+
+    <!-- MODAL: ADD PACKAGE -->
+    <div id="modal-package" class="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-2xl border border-gray-100 animate-in fade-in zoom-in duration-150">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-xl font-black text-gray-900 flex items-center gap-2">
+                    <i class="fa-solid fa-box text-sheinPink"></i> הוספת חבילה חדשה
+                </h3>
+                <button onclick="closeAddPackageModal()" class="w-8 h-8 rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200 flex items-center justify-center transition">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <form onsubmit="saveNewPackage(event)" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-bold mb-1.5 text-gray-700">שם החבילה</label>
+                    <input type="text" id="pkg-name" required placeholder="לדוגמה: שמלה פרחונית ונעליים" 
+                        class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-sheinPink text-sm bg-gray-50">
+                </div>
+                <div>
+                    <label class="block text-sm font-bold mb-1.5 text-gray-700">מה יש בחבילה?</label>
+                    <textarea id="pkg-contents" rows="2" placeholder="פירוט הפריטים..." 
+                        class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-sheinPink text-sm bg-gray-50"></textarea>
+                </div>
+                <div>
+                    <label class="block text-sm font-bold mb-1.5 text-gray-700 flex justify-between items-center">
+                        <span>מספר מעקב</span>
+                        <button type="button" onclick="startScanner('pkg-tracking')" class="text-xs bg-orange-50 text-sheinPink px-2.5 py-1 rounded-lg font-bold hover:bg-orange-100 transition flex items-center gap-1.5">
+                            <i class="fa-solid fa-camera"></i> סרוק ברקוד/QR
+                        </button>
+                    </label>
+                    <input type="text" id="pkg-tracking" required placeholder="לדוגמה: IL123456789SH" 
+                        class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-sheinPink text-sm font-mono bg-gray-50">
+                </div>
+                <div>
+                    <label class="block text-sm font-bold mb-1.5 text-gray-700">סטטוס התחלתי</label>
+                    <select id="pkg-status" class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-sheinPink text-sm bg-gray-50 font-semibold">
+                        <option value="הוזמן">הוזמן</option>
+                        <option value="בדרך">בדרך</option>
+                        <option value="מחכה לאיסוף">מחכה לאיסוף</option>
+                        <option value="נאסף">נאסף</option>
+                    </select>
+                </div>
+                <div class="flex justify-end gap-3 pt-4">
+                    <button type="button" onclick="closeAddPackageModal()" class="px-5 py-2.5 rounded-xl border border-gray-200 text-gray-600 font-bold text-sm hover:bg-gray-100 transition">ביטול</button>
+                    <button type="submit" class="px-6 py-2.5 rounded-xl bg-sheinPink hover:bg-sheinPinkHover text-white font-bold text-sm shadow-md transition cursor-pointer">הוסף חבילה</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- MODAL: ADD RETURN -->
+    <div id="modal-return" class="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-3xl p-6 sm:p-8 max-w-lg w-full shadow-2xl border border-gray-100 animate-in fade-in zoom-in duration-150">
+            <div class="flex justify-between items-center mb-6">
+                <h3 class="text-xl font-black text-gray-900 flex items-center gap-2">
+                    <i class="fa-solid fa-box-archive text-sheinDark"></i> הוספת החזר חדש
+                </h3>
+                <button onclick="closeAddReturnModal()" class="w-8 h-8 rounded-full bg-gray-100 text-gray-500 hover:bg-gray-200 flex items-center justify-center transition">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <form onsubmit="saveNewReturn(event)" class="space-y-4">
+                <div>
+                    <label class="block text-sm font-bold mb-1.5 text-gray-700">שם הפריטים / החבילה</label>
+                    <input type="text" id="ret-name" required placeholder="לדוגמה: מעיל גשם להחזר" 
+                        class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-sheinDark text-sm bg-gray-50">
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-bold mb-1.5 text-gray-700">מספר אסמכתא</label>
+                        <input type="text" id="ret-ref" required placeholder="מספר אסמכתא להחזר" 
+                            class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-sheinDark text-sm font-mono bg-gray-50">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-bold mb-1.5 text-gray-700 flex justify-between items-center">
+                            <span>מספר מעקב</span>
+                            <button type="button" onclick="startScanner('ret-tracking')" class="text-xs bg-gray-100 text-gray-800 px-2 py-0.5 rounded-lg font-bold hover:bg-gray-200 transition flex items-center gap-1">
+                                <i class="fa-solid fa-camera"></i> סרוק
+                            </button>
+                        </label>
+                        <input type="text" id="ret-tracking" required placeholder="מספר מעקב החזר" 
+                            class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-sheinDark text-sm font-mono bg-gray-50">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-bold mb-1.5 text-gray-700">סכום להחזר (₪)</label>
+                    <input type="number" step="0.01" id="ret-amount" required placeholder="0.00" 
+                        class="w-full px-4 py-3 rounded-xl border border-gray-300 focus:outline-none focus:ring-2 focus:ring-sheinDark text-sm bg-gray-50 font-bold">
+                </div>
+                <div class="flex justify-end gap-3 pt-4">
+                    <button type="button" onclick="closeAddReturnModal()" class="px-5 py-2.5 rounded-xl border border-gray-200 text-gray-600 font-bold text-sm hover:bg-gray-100 transition">ביטול</button>
+                    <button type="submit" class="px-6 py-2.5 rounded-xl bg-sheinDark hover:bg-black text-white font-bold text-sm shadow-md transition cursor-pointer">הוסף החזר</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- SCANNER MODAL (CAMERA) -->
+    <div id="scanner-modal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex flex-col items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl text-center relative">
+            <h3 class="text-lg font-black text-gray-900 mb-2">סריקת ברקוד או QR</h3>
+            <p class="text-xs text-gray-500 mb-4">כוון את המצלמה אל הברקוד של החבילה</p>
+            <div class="relative w-full h-64 bg-black rounded-2xl overflow-hidden mb-4 flex items-center justify-center">
+                <video id="scanner-video" class="w-full h-full object-cover" autoplay playsinline muted></video>
+                <div class="absolute inset-0 border-2 border-dashed border-sheinPink/80 pointer-events-none m-8 rounded-xl"></div>
+            </div>
+            <!-- Fallback input for manual code entry via camera if BarcodeDetector isn't natively supported -->
+            <div class="mb-4">
+                <input type="text" id="manual-scan-input" placeholder="או הזן קוד ידנית כאן..." class="w-full px-3 py-2 text-xs rounded-xl border border-gray-300 text-center font-mono">
+                <button type="button" onclick="applyScannedCode(document.getElementById('manual-scan-input').value)" class="mt-2 w-full bg-sheinPink text-white py-2 rounded-xl text-xs font-bold">אישור קוד ידני</button>
+            </div>
+            <button type="button" onclick="stopScanner()" class="w-full bg-gray-200 text-gray-700 py-2.5 rounded-xl font-bold text-xs">סגור מצלמה</button>
+        </div>
+    </div>
+
+    <!-- CUSTOM TOAST/MODAL MESSAGE INSTEAD OF ALERT -->
+    <div id="custom-modal" class="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs flex items-center justify-center p-4 hidden">
+        <div class="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl border border-gray-100 text-center">
+            <div id="custom-modal-icon" class="text-3xl text-green-500 mb-2"><i class="fa-solid fa-circle-check"></i></div>
+            <p id="custom-modal-msg" class="font-bold text-gray-800 mb-4 text-sm"></p>
+            <button onclick="closeCustomModal()" class="w-full bg-sheinDark hover:bg-black text-white py-2.5 rounded-xl font-bold text-xs">אישור</button>
+        </div>
+    </div>
+
+    <!-- JAVASCRIPT LOGIC -->
+    <script>
+        // Local Data State
+        let appData = {
+            password: '2712',
+            packages: [],
+            returns: []
+        };
+
+        let currentPkgFilter = 'all';
+        let currentReturnFilter = 'all';
+        let activeTargetInputId = null;
+        let videoStream = null;
+        let barcodeDetector = null;
+        let scanInterval = null;
+
+        // Load data on startup
+        window.onload = function() {
+            const saved = localStorage.getItem('shein_tracker_data');
+            if (saved) {
+                try {
+                    const parsed = JSON.parse(saved);
+                    appData.packages = parsed.packages || [];
+                    appData.returns = parsed.returns || [];
+                } catch(e) { console.error(e); }
+            }
+            appData.password = '2712';
+        };
+
+        function saveData() {
+            localStorage.setItem('shein_tracker_data', JSON.stringify(appData));
+        }
+
+        // Authentication Handler
+        function handleLogin(e) {
+            e.preventDefault();
+            const val = document.getElementById('password-input').value;
+            if (val === '2712') {
+                document.getElementById('auth-overlay').classList.add('hidden');
+                document.getElementById('app-container').classList.remove('hidden');
+                renderAll();
+            } else {
+                document.getElementById('login-error').classList.remove('hidden');
+            }
+        }
+
+        function showMessage(msg, isSuccess = true) {
+            document.getElementById('custom-modal-msg').innerText = msg;
+            document.getElementById('custom-modal-icon').innerHTML = isSuccess 
+                ? '<i class="fa-solid fa-circle-check text-green-500"></i>' 
+                : '<i class="fa-solid fa-circle-exclamation text-amber-500"></i>';
+            document.getElementById('custom-modal').classList.remove('hidden');
+        }
+
+        function closeCustomModal() {
+            document.getElementById('custom-modal').classList.add('hidden');
+        }
+
+        // Tab Navigation
+        function switchTab(tab) {
+            const pkgBtn = document.getElementById('tab-packages');
+            const retBtn = document.getElementById('tab-returns');
+            const pkgView = document.getElementById('view-packages');
+            const retView = document.getElementById('view-returns');
+
+            if (tab === 'packages') {
+                pkgBtn.className = "py-4 px-6 font-bold text-sm border-b-2 border-sheinPink text-sheinPink flex items-center gap-2 transition";
+                retBtn.className = "py-4 px-6 font-bold text-sm border-b-2 border-transparent text-gray-500 hover:text-gray-800 flex items-center gap-2 transition";
+                pkgView.classList.remove('hidden');
+                retView.classList.add('hidden');
+            } else {
+                retBtn.className = "py-4 px-6 font-bold text-sm border-b-2 border-sheinDark text-sheinDark flex items-center gap-2 transition";
+                pkgBtn.className = "py-4 px-6 font-bold text-sm border-b-2 border-transparent text-gray-500 hover:text-gray-800 flex items-center gap-2 transition";
+                retView.classList.remove('hidden');
+                pkgView.classList.add('hidden');
+            }
+            renderAll();
+        }
+
+        function renderAll() {
+            renderPackages();
+            renderReturns();
+            document.getElementById('tab-pkg-count').innerText = appData.packages.length;
+            document.getElementById('tab-ret-count').innerText = appData.returns.length;
+        }
+
+        // Modal Controls
+        function openAddPackageModal() { document.getElementById('modal-package').classList.remove('hidden'); }
+        function closeAddPackageModal() { document.getElementById('modal-package').classList.add('hidden'); }
+        function openAddReturnModal() { document.getElementById('modal-return').classList.remove('hidden'); }
+        function closeAddReturnModal() { document.getElementById('modal-return').classList.add('hidden'); }
+
+        // ================= CAMERA & SCANNER LOGIC =================
+        async function startScanner(targetInputId) {
+            activeTargetInputId = targetInputId;
+            document.getElementById('scanner-modal').classList.remove('hidden');
+            const videoElement = document.getElementById('scanner-video');
+
+            if ('BarcodeDetector' in window) {
+                try {
+                    barcodeDetector = new BarcodeDetector({ formats: ['code_128', 'qr_code', 'ean_13', 'code_39', 'upc_a'] });
+                } catch (err) {
+                    console.log('Barcode Detector not supported, using manual fallback');
+                }
+            }
+
+            try {
+                videoStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+                videoElement.srcObject = videoStream;
+                videoElement.play();
+
+                if (barcodeDetector) {
+                    scanInterval = setInterval(async () => {
+                        try {
+                            const barcodes = await barcodeDetector.detect(videoElement);
+                            if (barcodes.length > 0) {
+                                applyScannedCode(barcodes[0].rawValue);
+                            }
+                        } catch (e) {}
+                    }, 500);
+                }
+            } catch (err) {
+                console.error("Camera access error:", err);
+                showMessage("לא ניתן לגשת למצלמה. אנא הזן ידנית.", false);
+            }
+        }
+
+        function stopScanner() {
+            if (scanInterval) clearInterval(scanInterval);
+            if (videoStream) {
+                videoStream.getTracks().forEach(track => track.stop());
+                videoStream = null;
+            }
+            document.getElementById('scanner-modal').classList.add('hidden');
+            document.getElementById('manual-scan-input').value = '';
+        }
+
+        function applyScannedCode(code) {
+            if (!code) return;
+            if (activeTargetInputId) {
+                const inputEl = document.getElementById(activeTargetInputId);
+                if (inputEl) {
+                    inputEl.value = code;
+                }
+            }
+            stopScanner();
+            showMessage("קוד הונפק ונקלט בהצלחה!");
+        }
+
+        // ================= PACKAGES LOGIC =================
+        function saveNewPackage(e) {
+            e.preventDefault();
+            const name = document.getElementById('pkg-name').value;
+            const contents = document.getElementById('pkg-contents').value;
+            const tracking = document.getElementById('pkg-tracking').value;
+            const status = document.getElementById('pkg-status').value;
+
+            const newPkg = {
+                id: 'pkg_' + Date.now(),
+                name,
+                contents,
+                tracking,
+                status,
+                date: new Date().toLocaleDateString('he-IL')
+            };
+
+            appData.packages.unshift(newPkg);
+            saveData();
+            closeAddPackageModal();
+            e.target.reset();
+            renderAll();
+            showMessage('החבילה נוספה בהצלחה!');
+        }
+
+        function filterPackages(status) {
+            currentPkgFilter = status;
+            ['all', 'הוזמן', 'בדרך', 'מחכה לאיסוף', 'נאסף'].forEach(s => {
+                const btn = document.getElementById(`pkg-filter-${s}`);
+                if (btn) {
+                    if (s === status) {
+                        btn.className = "px-3.5 py-2 rounded-xl text-xs font-bold bg-sheinDark text-white whitespace-nowrap shadow-sm";
+                    } else {
+                        btn.className = "px-3.5 py-2 rounded-xl text-xs font-bold bg-gray-100 text-gray-600 whitespace-nowrap hover:bg-gray-200 transition";
+                    }
+                }
+            });
+            renderPackages();
+        }
+
+        function updatePackageStatus(pkgId, newStatus) {
+            const pkg = appData.packages.find(p => p.id === pkgId);
+            if (pkg) {
+                pkg.status = newStatus;
+                saveData();
+                renderAll();
+            }
+        }
+
+        function deletePackage(pkgId) {
+            appData.packages = appData.packages.filter(p => p.id !== pkgId);
+            saveData();
+            renderAll();
+            showMessage('החבילה נמחקה בהצלחה.');
+        }
+
+        function renderPackages() {
+            const container = document.getElementById('packages-container');
+            container.innerHTML = '';
+
+            const searchQuery = (document.getElementById('pkg-search').value || '').toLowerCase().trim();
+
+            document.getElementById('count-pkg-all').innerText = appData.packages.length;
+            ['הוזמן', 'בדרך', 'מחכה לאיסוף', 'נאסף'].forEach(s => {
+                const count = appData.packages.filter(p => p.status === s).length;
+                const el = document.getElementById(`count-pkg-${s}`);
+                if (el) el.innerText = count;
+            });
+
+            let filtered = currentPkgFilter === 'all' 
+                ? appData.packages 
+                : appData.packages.filter(p => p.status === currentPkgFilter);
+
+            if (searchQuery) {
+                filtered = filtered.filter(p => 
+                    (p.name && p.name.toLowerCase().includes(searchQuery)) || 
+                    (p.tracking && p.tracking.toLowerCase().includes(searchQuery)) ||
+                    (p.contents && p.contents.toLowerCase().includes(searchQuery))
+                );
+            }
+
+            if (filtered.length === 0) {
+                container.innerHTML = `
+                    <div class="col-span-full py-16 text-center bg-white rounded-3xl border border-gray-100">
+                        <div class="text-4xl text-gray-300 mb-2"><i class="fa-solid fa-box-open"></i></div>
+                        <p class="text-gray-500 font-semibold text-sm">אין חבילות תחת חיפוש או קטגוריה זו</p>
+                    </div>
+                `;
+                return;
+            }
+
+            filtered.forEach(pkg => {
+                let statusBg = 'bg-gray-100 text-gray-700';
+                if (pkg.status === 'הוזמן') statusBg = 'bg-blue-50 text-blue-700 border border-blue-100';
+                if (pkg.status === 'בדרך') statusBg = 'bg-amber-50 text-amber-700 border border-amber-100';
+                if (pkg.status === 'מחכה לאיסוף') statusBg = 'bg-orange-50 text-orange-600 border border-orange-200 animate-pulse';
+                if (pkg.status === 'נאסף') statusBg = 'bg-green-50 text-green-700 border border-green-100';
+
+                const card = document.createElement('div');
+                card.className = "bg-white rounded-3xl p-6 shadow-sm border border-gray-100 flex flex-col justify-between hover:shadow-md transition relative";
+                
+                card.innerHTML = `
+                    <div>
+                        <div class="flex justify-between items-start gap-2 mb-4">
+                            <h3 class="font-black text-base text-gray-900 leading-snug">${escapeHtml(pkg.name)}</h3>
+                            <span class="px-3 py-1 rounded-full text-xs font-bold whitespace-nowrap ${statusBg}">${pkg.status}</span>
+                        </div>
+                        <div class="space-y-2 mb-6 text-sm text-gray-600">
+                            <p class="flex items-center gap-2.5"><i class="fa-solid fa-bag-shopping text-gray-400 w-4"></i> <span class="font-semibold text-gray-700">תוכן:</span> ${escapeHtml(pkg.contents || 'לא צוין')}</p>
+                            <p class="flex items-center gap-2.5 font-mono text-xs"><i class="fa-solid fa-barcode text-gray-400 w-4"></i> <span class="font-semibold text-gray-700 font-sans">מעקב:</span> ${escapeHtml(pkg.tracking)}</p>
+                            <p class="text-xs text-gray-400 pt-1">נוסף בתאריך: ${pkg.date}</p>
+                        </div>
+                    </div>
+
+                    <div class="pt-4 border-t border-gray-100 flex flex-col gap-3">
+                        <div class="flex items-center justify-between text-xs font-bold text-gray-500">
+                            <span>שנה סטטוס:</span>
+                            <button onclick="deletePackage('${pkg.id}')" class="text-red-400 hover:text-red-600 transition cursor-pointer" title="מחק חבילה">
+                                <i class="fa-solid fa-trash-can text-sm"></i>
+                            </button>
+                        </div>
+                        
+                        <div class="grid grid-cols-1 gap-2.5">
+                            <select onchange="updatePackageStatus('${pkg.id}', this.value)" class="text-xs py-2.5 px-3.5 rounded-xl border border-gray-200 bg-gray-50 font-bold focus:outline-none focus:ring-2 focus:ring-sheinPink">
+                                <option value="הוזמן" ${pkg.status === 'הוזמן' ? 'selected' : ''}>הוזמן</option>
+                                <option value="בדרך" ${pkg.status === 'בדרך' ? 'selected' : ''}>בדרך</option>
+                                <option value="מחכה לאיסוף" ${pkg.status === 'מחכה לאיסוף' ? 'selected' : ''}>מחכה לאיסוף</option>
+                                <option value="נאסף" ${pkg.status === 'נאסף' ? 'selected' : ''}>נאסף</option>
+                            </select>
+
+                            ${pkg.status === 'מחכה לאיסוף' ? `
+                                <button onclick="updatePackageStatus('${pkg.id}', 'נאסף')" class="bg-green-600 hover:bg-green-700 text-white py-2.5 rounded-xl text-xs font-bold shadow-sm transition flex items-center justify-center gap-1.5 cursor-pointer">
+                                    <i class="fa-solid fa-check-double"></i> החבילה נאספה!
+                                </button>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+
+        // ================= RETURNS LOGIC =================
+        function saveNewReturn(e) {
+            e.preventDefault();
+            const name = document.getElementById('ret-name').value;
+            const reference = document.getElementById('ret-ref').value;
+            const tracking = document.getElementById('ret-tracking').value;
+            const amount = document.getElementById('ret-amount').value;
+
+            const newReturn = {
+                id: 'ret_' + Date.now(),
+                name,
+                reference,
+                tracking,
+                amount,
+                status: 'האיסוף נפתח',
+                date: new Date().toLocaleDateString('he-IL')
+            };
+
+            appData.returns.unshift(newReturn);
+            saveData();
+            closeAddReturnModal();
+            e.target.reset();
+            renderAll();
+            showMessage('ההחזר נוסף בהצלחה!');
+        }
+
+        function filterReturns(status) {
+            currentReturnFilter = status;
+            ['all', 'האיסוף נפתח', 'החבילה ארוזה ומוכנה לשליחה', 'החבילה מוכנה להחזר', 'התשלום הוחזר'].forEach(s => {
+                const btn = document.getElementById(`ret-filter-${s}`);
+                if (btn) {
+                    if (s === status) {
+                        btn.className = "px-3.5 py-2 rounded-xl text-xs font-bold bg-sheinDark text-white whitespace-nowrap shadow-sm";
+                    } else {
+                        btn.className = "px-3.5 py-2 rounded-xl text-xs font-bold bg-gray-100 text-gray-600 whitespace-nowrap hover:bg-gray-200 transition";
+                    }
+                }
+            });
+            renderReturns();
+        }
+
+        function updateReturnStatus(retId, newStatus) {
+            const ret = appData.returns.find(r => r.id === retId);
+            if (ret) {
+                ret.status = newStatus;
+                saveData();
+                renderAll();
+            }
+        }
+
+        function deleteReturn(retId) {
+            appData.returns = appData.returns.filter(r => r.id !== retId);
+            saveData();
+            renderAll();
+            showMessage('ההחזר נמחק בהצלחה.');
+        }
+
+        function renderReturns() {
+            const container = document.getElementById('returns-container');
+            container.innerHTML = '';
+
+            const searchQuery = (document.getElementById('ret-search').value || '').toLowerCase().trim();
+
+            document.getElementById('count-ret-all').innerText = appData.returns.length;
+            ['האיסוף נפתח', 'החבילה ארוזה ומוכנה לשליחה', 'החבילה מוכנה להחזר', 'התשלום הוחזר'].forEach(s => {
+                const count = appData.returns.filter(r => r.status === s).length;
+                const el = document.getElementById(`count-ret-${s}`);
+                if (el) el.innerText = count;
+            });
+
+            let filtered = currentReturnFilter === 'all' 
+                ? appData.returns 
+                : appData.returns.filter(r => r.status === currentReturnFilter);
+
+            if (searchQuery) {
+                filtered = filtered.filter(r => 
+                    (r.name && r.name.toLowerCase().includes(searchQuery)) || 
+                    (r.reference && r.reference.toLowerCase().includes(searchQuery)) ||
+                    (r.tracking && r.tracking.toLowerCase().includes(searchQuery))
+                );
+            }
+
+            if (filtered.length === 0) {
+                container.innerHTML = `
+                    <div class="col-span-full py-16 text-center bg-white rounded-3xl border border-gray-100">
+                        <div class="text-4xl text-gray-300 mb-2"><i class="fa-solid fa-box-archive"></i></div>
+                        <p class="text-gray-500 font-semibold text-sm">אין החזרים תחת חיפוש או קטגוריה זו</p>
+                    </div>
+                `;
+                return;
+            }
+
+            filtered.forEach(ret => {
+                let statusBg = 'bg-gray-100 text-gray-700';
+                if (ret.status === 'האיסוף נפתח') statusBg = 'bg-blue-50 text-blue-700 border border-blue-100';
+                if (ret.status === 'החבילה ארוזה ומוכנה לשליחה') statusBg = 'bg-amber-50 text-amber-700 border border-amber-100';
+                if (ret.status === 'החבילה מוכנה להחזר') statusBg = 'bg-purple-50 text-purple-700 border border-purple-200 font-bold';
+                if (ret.status === 'התשלום הוחזר') statusBg = 'bg-green-50 text-green-700 border border-green-100 font-bold';
+
+                const card = document.createElement('div');
+                card.className = "bg-white rounded-3xl p-6 shadow-sm border border-gray-100 flex flex-col justify-between hover:shadow-md transition relative";
+                
+                card.innerHTML = `
+                    <div>
+                        <div class="flex justify-between items-start gap-2 mb-4">
+                            <div>
+                                <span class="text-xs font-bold text-orange-600 bg-orange-50 px-2.5 py-0.5 rounded-md">החזר כספי</span>
+                                <h3 class="font-black text-base text-gray-900 leading-snug mt-1">${escapeHtml(ret.name)}</h3>
+                            </div>
+                            <span class="px-3 py-1 rounded-full text-xs font-bold whitespace-nowrap ${statusBg}">${ret.status}</span>
+                        </div>
+                        <div class="space-y-2 mb-6 text-sm text-gray-600">
+                            <p class="flex items-center gap-2.5 font-mono text-xs"><i class="fa-solid fa-receipt text-gray-400 w-4"></i> <span class="font-semibold text-gray-700 font-sans">אסמכתא:</span> ${escapeHtml(ret.reference)}</p>
+                            <p class="flex items-center gap-2.5 font-mono text-xs"><i class="fa-solid fa-barcode text-gray-400 w-4"></i> <span class="font-semibold text-gray-700 font-sans">מספר מעקב:</span> ${escapeHtml(ret.tracking)}</p>
+                            <p class="flex items-center gap-2.5 text-base font-black text-gray-900"><i class="fa-solid fa-shekel-sign text-sheinDark w-4"></i> סכום להחזר: ₪${ret.amount}</p>
+                            <p class="text-xs text-gray-400 pt-1">נוסף בתאריך: ${ret.date}</p>
+                        </div>
+                    </div>
+
+                    <div class="pt-4 border-t border-gray-100 flex flex-col gap-3">
+                        <div class="flex items-center justify-between text-xs font-bold text-gray-500">
+                            <span>שנה סטטוס החזר:</span>
+                            <button onclick="deleteReturn('${ret.id}')" class="text-red-400 hover:text-red-600 transition cursor-pointer" title="מחק החזר">
+                                <i class="fa-solid fa-trash-can text-sm"></i>
+                            </button>
+                        </div>
+                        
+                        <div class="grid grid-cols-1 gap-2.5">
+                            <select onchange="updateReturnStatus('${ret.id}', this.value)" class="text-xs py-2.5 px-3.5 rounded-xl border border-gray-200 bg-gray-50 font-bold focus:outline-none focus:ring-2 focus:ring-sheinDark">
+                                <option value="האיסוף נפתח" ${ret.status === 'האיסוף נפתח' ? 'selected' : ''}>האיסוף נפתח</option>
+                                <option value="החבילה ארוזה ומוכנה לשליחה" ${ret.status === 'החבילה ארוזה ומוכנה לשליחה' ? 'selected' : ''}>החבילה ארוזה ומוכנה לשליחה</option>
+                                <option value="החבילה מוכנה להחזר" ${ret.status === 'החבילה מוכנה להחזר' ? 'selected' : ''}>החבילה מוכנה להחזר</option>
+                                <option value="התשלום הוחזר" ${ret.status === 'התשלום הוחזר' ? 'selected' : ''}>התשלום הוחזר</option>
+                            </select>
+
+                            ${ret.status === 'החבילה מוכנה להחזר' ? `
+                                <button onclick="updateReturnStatus('${ret.id}', 'החבילה ארוזה ומוכנה לשליחה')" class="bg-sheinDark hover:bg-black text-white py-2.5 rounded-xl text-xs font-bold shadow-sm transition flex items-center justify-center gap-1.5 cursor-pointer">
+                                    <i class="fa-solid fa-box-archive"></i> החבילה ארוזה לנקודה
+                                </button>
+                            ` : ''}
+
+                            ${ret.status === 'החבילה ארוזה ומוכנה לשליחה' ? `
+                                <button onclick="updateReturnStatus('${ret.id}', 'התשלום הוחזר')" class="bg-green-600 hover:bg-green-700 text-white py-2.5 rounded-xl text-xs font-bold shadow-sm transition flex items-center justify-center gap-1.5 cursor-pointer">
+                                    <i class="fa-solid fa-shekel-sign"></i> התשלום הוחזר בפועל!
+                                </button>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+                container.appendChild(card);
+            });
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            return text.toString()
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+    </script>
+</body>
+</html>
